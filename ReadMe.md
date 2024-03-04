@@ -9,7 +9,27 @@ mailbox格式如下
 ```text
 邮箱名 口令 用户sid
 ```
-1.ini格式如下，意识是收取从什么时间以后的邮件
+1.ini格式如下，意识是收取从什么时间以后的邮件，每次收取邮件后会自动更新
 ```text
 2024-03-04 23:21
+```
+如果使用0模式收邮件，需要将一个用户添加到Exchange server的 IMPERSONATION角色
+
+```sh
+python Exchange_Get.py -h
+usage: Exchange_Get.py [-h] -t TYPE [-s SERVER] [-u USERNAME] [-p PASSWORD] [-c CONF] -pa PATH
+
+options:
+  -h, --help            show this help message and exit
+  -t TYPE, --type TYPE  The manner of working. 0 -- An Impersonation user to get all emails. 1 -- Provided the emails
+                        and the hashes(passwords) of users
+  -s SERVER, --server SERVER
+                        The url(ip) of the exchange server
+  -u USERNAME, --username USERNAME
+                        The impersonation user that used to get emails
+  -p PASSWORD, --password PASSWORD
+                        The password(NTLM hash) of the impersonation user
+  -c CONF, --conf CONF  The configuration that record the time of get emails
+  -pa PATH, --path PATH
+                        The path of the user_emails' list
 ```
