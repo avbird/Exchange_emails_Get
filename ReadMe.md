@@ -9,6 +9,11 @@ mailbox格式如下
 ```text
 邮箱名 口令 用户sid
 ```
+sid号可通过以下命令获取
+```sh
+wmic useraccount where name='username' get sid
+```
+
 1.ini格式如下，意识是收取从什么时间以后的邮件，每次收取邮件后会自动更新
 ```text
 2024-03-04 23:21
