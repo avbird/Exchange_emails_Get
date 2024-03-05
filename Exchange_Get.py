@@ -1,5 +1,4 @@
 import time
-
 from exchangelib.protocol import BaseProtocol, NoVerifyHTTPAdapter
 from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, Configuration
 import urllib3
