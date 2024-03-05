@@ -1,13 +1,25 @@
+import time
+
 from exchangelib.protocol import BaseProtocol, NoVerifyHTTPAdapter
-from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, Configuration, FileAttachment
+from exchangelib import DELEGATE, IMPERSONATION, Account, Credentials, Configuration
 import urllib3
 from exchangelib.ewsdatetime import EWSDateTime
 import argparse
 from datetime import datetime
+from exchangelib.errors import TransportError
+import os
 
 BaseProtocol.USERAGENT = "Auto-Reply/0.1.0"
 BaseProtocol.HTTP_ADAPTER_CLS = NoVerifyHTTPAdapter  # 忽略TLS验证错误
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # 禁用所有的InsecureRequestWarning警告
+
+
+def Replace_str(str1):
+    str_pattern = ['\\', '/', ':', '?', '*', '<', '>', '|', '"']
+    res_str = str1
+    for char in str_pattern:
+        res_str = res_str.replace(char, '_')
+    return res_str
 
 
 def trans_time(time_string):
@@ -15,22 +27,33 @@ def trans_time(time_string):
     return time_str
 
 
-def Get_mails(account, sign_time):
+def Get_mails(account, sign_time, mail_user):
     for item in account.inbox.all().order_by('-datetime_received'):
         if item.datetime_received < sign_time:
-            print("No more emails in this user's mailbox!")
+            print(f"No more emails in {mail_user}'s inbox!")
             break
         else:
-            for attachment in item.attachments:
-                if isinstance(attachment, FileAttachment):
-                    name = f'{item.subject}-{attachment.name}'
-                    with open(name, 'wb') as f, attachment.fp as fp:
-                        buffer = fp.read(1024)
-                        while buffer:
-                            f.write(buffer)
-                            buffer = fp.read(1024)
-            with open(f'{item.subject}.eml', 'wb') as f:
+            email_name = item.subject
+            os.makedirs(mail_user, exist_ok=True)
+            saved_name = f'{mail_user}/{Replace_str(email_name)}.eml'
+            if os.path.exists(saved_name) and item.size == os.path.getsize(saved_name):
+                continue
+            with open(saved_name, 'wb') as f:
                 f.write(item.mime_content)
+            print(f'{saved_name} has been saved')
+    for item in account.sent.all().order_by('-datetime_received'):
+        if item.datetime_received < sign_time:
+            print(f"No more emails in {mail_user}'s sent_box!")
+            break
+        else:
+            email_name = item.subject
+            os.makedirs(mail_user, exist_ok=True)
+            saved_name = f'{mail_user}/{Replace_str(email_name)}.eml'
+            if os.path.exists(saved_name) and item.size == os.path.getsize(saved_name):
+                continue
+            with open(saved_name, 'wb') as f:
+                f.write(item.mime_content)
+            print(f'{saved_name} has been saved')
 
 
 def Auth(server_name, mail_users, mail_pass, user, pass_hash, work_type, sign_time, user_sids):
@@ -38,16 +61,15 @@ def Auth(server_name, mail_users, mail_pass, user, pass_hash, work_type, sign_ti
         credentials = Credentials(username=user, password=pass_hash)
         config = Configuration(server=server_name, credentials=credentials)
         account = Account(primary_smtp_address=user, config=config, autodiscover=False, access_type=IMPERSONATION)
-        for user_sid in user_sids:
+        for mail_user, user_sid in zip(mail_users, user_sids):
             account.identity.sid = user_sid
-            Get_mails(account, sign_time)
+            Get_mails(account, sign_time, mail_user)
     else:
         for mail_user, password in zip(mail_users, mail_pass):
-            print(mail_user, password)
             credentials = Credentials(username=mail_user, password=password)
             config = Configuration(server=server_name, credentials=credentials)
             account = Account(primary_smtp_address=mail_user, config=config, autodiscover=False, access_type=DELEGATE)
-            Get_mails(account, sign_time)
+            Get_mails(account, sign_time, mail_user)
 
 
 if __name__ == "__main__":
@@ -87,10 +109,22 @@ if __name__ == "__main__":
         time_str = f.read()
     sign_time = trans_time(time_str)
 
-    Auth(server, user_emails, user_auth, username, password, work_type, sign_time, user_sid)
+    max_retries = 3
+    time_delay = 5
 
-    current_time = datetime.now().strftime("%Y-%m-%dT%H:%M")
-    with open(conf, 'w') as f:
-        f.write(current_time)
+    for attempt in range(max_retries):
+        try:
+            Auth(server, user_emails, user_auth, username, password, work_type, sign_time, user_sid)
 
-    print('Finished!')
+            current_time = datetime.now().strftime("%Y-%m-%dT%H:%M")
+            with open(conf, 'w') as f:
+                f.write(current_time)
+
+            print('\nFinished!')
+            break
+        except TransportError:
+            if attempt < max_retries - 1:
+                print(f"连接超时，{time_delay}秒后尝试重连，这是第{attempt+1}/{max_retries}次尝试\n")
+                time.sleep(time_delay)
+            else:
+                print("已经达到最大重试次数\n\n!!!----与服务器连接超时，请检查网络及目标服务器状态")
